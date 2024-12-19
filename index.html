@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mocess Network Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            background: transparent;
+        }
+        #visualization-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="visualization-container"></div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const container = document.getElementById('visualization-container');
+            
+            // Scene setup
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.z = 20;
+            camera.position.y = 2;
+
+            const renderer = new THREE.WebGLRenderer({ 
+                antialias: true,
+                alpha: true 
+            });
+            renderer.setClearColor(0x000000, 0);
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const pointLight1 = new THREE.PointLight(0x15aeb5, 1);
+            pointLight1.position.set(10, 10, 10);
+            scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0x15aeb5, 0.8);
+            pointLight2.position.set(-10, -10, 10);
+            scene.add(pointLight2);
+
+            // Materials
+            const createNeuralMaterial = (opacity) => {
+                return new THREE.MeshPhysicalMaterial({
+                    color: 0x15aeb5,
+                    metalness: 0.2,
+                    roughness: 0.1,
+                    transmission: 0.8,
+                    thickness: 0.5,
+                    transparent: true,
+                    opacity: opacity,
+                    envMapIntensity: 1.2,
+                    clearcoat: 1,
+                    clearcoatRoughness: 0.1,
+                });
+            };
+
+            const coreMaterial = createNeuralMaterial(0.4);
+            const featureMaterial = createNeuralMaterial(0.3);
+            const subFeatureMaterial = createNeuralMaterial(0.2);
+
+            // Create text sprite
+            function createTextSprite(text) {
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 256;
+                canvas.height = 128;
+
+                context.shadowColor = 'rgba(21, 174, 181, 0.5)';
+                context.shadowBlur = 10;
+                context.shadowOffsetX = 0;
+                context.shadowOffsetY = 0;
+
+                context.font = '24px system-ui, -apple-system, sans-serif';
+                context.fillStyle = '#cbd5e1';
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+                context.fillText(text, canvas.width/2, canvas.height/2);
+
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ 
+                    map: texture,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.scale.set(2, 1, 1);
+                return sprite;
+            }
+
+            // Node class
+            class Node {
+                constructor(position, size, material, text) {
+                    const geometry = new THREE.SphereGeometry(size, 32, 32);
+                    this.mesh = new THREE.Mesh(geometry, material);
+                    this.mesh.position.set(...position);
+
+                    const wireframeGeometry = new THREE.SphereGeometry(size * 1.01, 16, 16);
+                    const wireframeMaterial = new THREE.MeshBasicMaterial({
+                        color: 0x15aeb5,
+                        wireframe: true,
+                        transparent: true,
+                        opacity: 0.1
+                    });
+                    this.wireframe = new THREE.Mesh(wireframeGeometry, wireframeMaterial);
+                    this.mesh.add(this.wireframe);
+
+                    const sprite = createTextSprite(text);
+                    sprite.position.set(0, size * 1.5, 0);
+                    this.mesh.add(sprite);
+
+                    scene.add(this.mesh);
+                }
+            }
+
+            // Create nodes
+            const nodes = {
+                core: new Node([0, 0, 0], 1.5, coreMaterial, 'Core'),
+                input: new Node([-5, 4, 0], 1, featureMaterial, 'Input'),
+                processing: new Node([5, 4, 0], 1, featureMaterial, 'Processing'),
+                implementation: new Node([5, -4, 0], 1, featureMaterial, 'Implementation'),
+                feedback: new Node([-5, -4, 0], 1, featureMaterial, 'Feedback'),
+                
+                processAnalysis: new Node([-7, 6, 2], 0.7, subFeatureMaterial, 'Process Analysis'),
+                businessReqs: new Node([-3, 6, 2], 0.7, subFeatureMaterial, 'Business Reqs'),
+                workflow: new Node([7, 6, 2], 0.7, subFeatureMaterial, 'Workflow'),
+                integration: new Node([3, 6, 2], 0.7, subFeatureMaterial, 'Integration'),
+                automation: new Node([7, -6, 2], 0.7, subFeatureMaterial, 'Automation'),
+                metrics: new Node([3, -6, 2], 0.7, subFeatureMaterial, 'Metrics'),
+                monitoring: new Node([-7, -6, 2], 0.7, subFeatureMaterial, 'Monitoring'),
+                learning: new Node([-3, -6, 2], 0.7, subFeatureMaterial, 'Learning'),
+            };
+
+            // Create connections
+            const connectionMaterial = new THREE.LineBasicMaterial({
+                color: 0x15aeb5,
+                transparent: true,
+                opacity: 0.15,
+                linewidth: 1
+            });
+
+            const connections = [];
+
+            // Orbital paths
+            const orbitalPaths = {
+                input: { radius: 4.5, speed: 0.2, phase: 0 },
+                processing: { radius: 4.5, speed: 0.25, phase: Math.PI / 2 },
+                implementation: { radius: 4.5, speed: 0.22, phase: Math.PI },
+                feedback: { radius: 4.5, speed: 0.27, phase: 3 * Math.PI / 2 },
+                
+                processAnalysis: { radius: 6, speed: 0.3, phase: 0 },
+                businessReqs: { radius: 6, speed: 0.32, phase: Math.PI / 4 },
+                workflow: { radius: 6, speed: 0.28, phase: Math.PI / 2 },
+                integration: { radius: 6, speed: 0.35, phase: 3 * Math.PI / 4 },
+                automation: { radius: 6, speed: 0.3, phase: Math.PI },
+                metrics: { radius: 6, speed: 0.28, phase: 5 * Math.PI / 4 },
+                monitoring: { radius: 6, speed: 0.32, phase: 3 * Math.PI / 2 },
+                learning: { radius: 6, speed: 0.3, phase: 7 * Math.PI / 4 }
+            };
+
+            // Create initial connections
+            Object.values(nodes).forEach((node, index) => {
+                if (node !== nodes.core) {
+                    const line = new THREE.Line(
+                        new THREE.BufferGeometry().setFromPoints([
+                            new THREE.Vector3(0, 0, 0),
+                            node.mesh.position
+                        ]),
+                        connectionMaterial
+                    );
+                    connections.push(line);
+                    scene.add(line);
+                }
+            });
+
+            // Mouse controls
+            let isDragging = false;
+            let previousMousePosition = { x: 0, y: 0 };
+
+            container.addEventListener('mousedown', (event) => {
+                isDragging = true;
+                previousMousePosition = {
+                    x: event.clientX,
+                    y: event.clientY
+                };
+            });
+
+            container.addEventListener('mousemove', (event) => {
+                if (isDragging) {
+                    const deltaMove = {
+                        x: event.clientX - previousMousePosition.x,
+                        y: event.clientY - previousMousePosition.y
+                    };
+
+                    scene.rotation.y += deltaMove.x * 0.005;
+                    scene.rotation.x += deltaMove.y * 0.005;
+
+                    previousMousePosition = {
+                        x: event.clientX,
+                        y: event.clientY
+                    };
+                }
+            });
+
+            container.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            container.addEventListener('mouseleave', () => {
+                isDragging = false;
+            });
+
+            // Animation
+            const clock = new THREE.Clock();
+
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                const time = clock.getElapsedTime();
+                
+                // Core node pulse effect
+                nodes.core.mesh.scale.setScalar(1 + Math.sin(time * 2) * 0.1);
+                nodes.core.wireframe.rotation.x += 0.002;
+                nodes.core.wireframe.rotation.y += 0.003;
+
+                // Update node positions along orbital paths
+                Object.entries(nodes).forEach(([key, node], index) => {
+                    if (key !== 'core' && orbitalPaths[key]) {
+                        const path = orbitalPaths[key];
+                        const angle = time * path.speed + path.phase;
+                        
+                        const x = path.radius * Math.cos(angle);
+                        const z = path.radius * Math.sin(angle);
+                        const y = node.mesh.position.y + Math.sin(time + path.phase) * 0.01;
+                        
+                        node.mesh.position.set(x, y, z);
+                        node.mesh.lookAt(0, 0, 0);
+                        
+                        node.wireframe.rotation.x += 0.01 * path.speed;
+                        node.wireframe.rotation.y += 0.015 * path.speed;
+
+                        if (connections[index - 1]) {
+                            const points = [
+                                new THREE.Vector3(0, 0, 0),
+                                new THREE.Vector3(x, y, z)
+                            ];
+                            connections[index - 1].geometry.setFromPoints(points);
+                        }
+                    }
+                });
+                
+                if (!isDragging) {
+                    scene.rotation.y += 0.0005;
+                    scene.rotation.x = Math.sin(time * 0.2) * 0.1;
+                }
+                
+                renderer.render(scene, camera);
+            }
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            // Start animation
+            animate();
+        });
+    </script>
+</body>
+</html>
